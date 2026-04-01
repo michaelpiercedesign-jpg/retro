@@ -36,7 +36,7 @@ This is not “best practices”. This is **ship practices**.
 Voxels is being open-sourced so it can live, **not** so it can be bloated.
 
 - **No feature bloat**: Do not “add” things. If it wasn’t in the core feature set of the final production version, I don’t want it.
-- **The UI stays as‑is**: I spent years fighting UI churn. I do not care if you liked the 2021 menu better. I am the one who has to support this code; I want 1/10th of the code for the same features. If you want a different UI, fork it.
+- **The UI stays as‑is**: I spent years fighting UI churn. I do not care if you liked the 2021 menu better. I am the one who has to support this code; I want 1/10th of the code for the same features. If you want a different UI, maintain a branch.
 - **Dead means dead**: Do not try to bring back “classic” features or “better” old versions of systems that were stripped out. They were stripped for a reason (usually because they were buggy, heavy, or broken).
 - **Minimalist stewardship**: This repo is a finished product, not a canvas for your “best possible version” ideas. PRs that add complexity or revert to old, heavy patterns will be closed without debate.
 
@@ -51,6 +51,8 @@ Voxels is being open-sourced so it can live, **not** so it can be bloated.
   - If a feature/module is unused or making the code harder to reason about, delete it.
 - **Guard rails, not dissertations**
   - Add `try/catch`, `if (!x) return`, and explicit fallbacks where real-world input breaks.
+- **Can it be done in less lines of code**
+  - If your new code adds 10 lines when the same thing could be achieved with a single line of code, it will not be merged.
 
 ## Ben fix patterns (copy/paste mentality)
 
@@ -69,7 +71,7 @@ Voxels is being open-sourced so it can live, **not** so it can be bloated.
 
 - If you’re generating lots of items (features, meshes, whatever):
   - Consume in small chunks under a time budget.
-  - Reschedule with `setTimeout(..., 1000/60)` instead of blocking.
+  - Use comlink or queues instead of blocking.
 
 ### Deterministic fallback when introspection lies
 
@@ -104,22 +106,6 @@ Voxels is being open-sourced so it can live, **not** so it can be bloated.
 - **Obvious logging spam**: debug prints left in.
 - **Resurrection attempts**: bringing back old features/UI or adding new ones outside the final production feature set.
 
-## How the agent should coach (rewrite style)
-
-When reviewing a PR:
-
-- **Be blunt**: say what’s wrong in one sentence.
-- **Offer the Ben move**: show the smallest rewrite that gets it in-style.
-- **Prefer deletion**: if there’s a simpler path by removing code, suggest that first.
-- **Prefer guard rails**: if it might be `null`, make it `return`.
-- **Prefer deterministic fallback**: if the “smart” detection is flaky, hardcode the safe value.
-
-When writing the review message:
-
-- **No corporate fluff**: skip “I appreciate…”, skip “consider…”. Say what to change.
-- **Mock the bug**: never the contributor.
-- **Give the patch shape**: “delete X”, “wrap Y in try/catch”, “return early if Z”.
-
 ## Examples (self-contained)
 
 ### 1) Don’t crash for edge cases (fail soft)
@@ -133,6 +119,7 @@ throw new Error("Not supported yet");
 Good:
 
 ```ts
+console.error("Not supported yet");
 return;
 ```
 
@@ -173,48 +160,16 @@ doc.body.innerHTML = html;
 
 **Ben takeaway**: guard the real-world nulls and keep moving.
 
-### 4) Catch is `unknown`: handle it like an adult
+### 4) Don't use typechecks at runtime
 
-Bad:
-
-```ts
-try {
-  return JSON.parse(payload);
-} catch (e) {
-  console.log(e.message);
-  return null;
-}
-```
-
-Good:
-
-```ts
-try {
-  return JSON.parse(payload) as unknown;
-} catch {
-  return null;
-}
-```
-
-**Ben takeaway**: if parsing fails, bail. No drama.
+There's some shit client code in here that checks schemas against io-ts. Don't
+do that. You do not need to defend yourself from the fucking server.
 
 ### 5) Deterministic over clever
 
-Bad (flaky introspection):
+### 6) Pick a sane default and ship.
 
-```ts
-const frames = Math.round(textureWidth / 128);
-```
-
-Good (sane constant):
-
-```ts
-const frames = 36; // don’t fight it
-```
-
-**Ben takeaway**: pick a sane default and ship.
-
-### 6) Cache the expensive thing (typed)
+### 7) Cache the expensive thing (typed)
 
 Bad:
 
@@ -235,7 +190,8 @@ if (!voxMaterial) {
 mesh.material = voxMaterial;
 ```
 
-**Ben takeaway**: one material, frozen, reused. Done.
+**Ben takeaway**: one material, frozen, reused. Done. Don't create it until you need it. Then 
+don't create it again.
 
 ### 7) Delete dead code (no resurrection)
 
@@ -251,6 +207,7 @@ Good:
 - Delete the file / codepath.
 - Remove the routes/imports.
 - Stop pretending you’re coming back.
+- Replace an entire dying subsystem with a single line of code at the entrypoint
 
 **Ben takeaway**: dead code is debt. Delete it.
 
@@ -259,7 +216,6 @@ Good:
 - Make the diff smaller.
 - Remove dead code instead of adding flags.
 - Add guards instead of assumptions.
-- Cache/freeze hot-path objects.
 - If a platform is flaky, wrap it and return.
 - If “smart” detection fails, hardcode the safe value.
 
