@@ -52,6 +52,7 @@ $body$;
 
 
 -- Remove PostGIS: footprint columns, cube bounds, JSON backfill, drop streets and geometry
+-- Safe to run on both legacy (PostGIS) databases and fresh imports from db/import.sql
 select apply_migration('remove-postgis-footprint-bounds-json',
 $$
   CREATE EXTENSION IF NOT EXISTS cube;
@@ -62,54 +63,74 @@ $$
   ALTER TABLE islands ADD COLUMN IF NOT EXISTS other_name text;
 
   ALTER TABLE properties ADD COLUMN IF NOT EXISTS geometry_json jsonb;
-  UPDATE properties
-  SET geometry_json = (COALESCE(geometry_json::jsonb, ST_AsGeoJSON(geometry)::jsonb))::json
-  WHERE geometry IS NOT NULL;
-
   ALTER TABLE properties ADD COLUMN IF NOT EXISTS x1 integer;
   ALTER TABLE properties ADD COLUMN IF NOT EXISTS x2 integer;
   ALTER TABLE properties ADD COLUMN IF NOT EXISTS z1 integer;
   ALTER TABLE properties ADD COLUMN IF NOT EXISTS z2 integer;
-
-  UPDATE properties
-  SET
-    x1 = round(ST_XMin(geometry) * 100)::integer,
-    x2 = round(ST_XMax(geometry) * 100)::integer,
-    z1 = round(ST_YMin(geometry) * 100)::integer,
-    z2 = round(ST_YMax(geometry) * 100)::integer
-  WHERE geometry IS NOT NULL;
-
   ALTER TABLE properties ADD COLUMN IF NOT EXISTS bounds cube;
-  UPDATE properties
-  SET bounds = cube(
-    ARRAY[x1::float8, y1::float8, z1::float8],
-    ARRAY[x2::float8, y2::float8, z2::float8]
-  )
-  WHERE x1 IS NOT NULL AND y1 IS NOT NULL AND y2 IS NOT NULL;
-
   ALTER TABLE islands ADD COLUMN IF NOT EXISTS geometry_json jsonb;
-  UPDATE islands
-  SET geometry_json = (COALESCE(geometry_json::jsonb, ST_AsGeoJSON(geometry)::jsonb))::json
-  WHERE geometry IS NOT NULL;
-
   ALTER TABLE islands ADD COLUMN IF NOT EXISTS position_json jsonb;
-  UPDATE islands
-  SET position_json = (COALESCE(position_json::jsonb, ST_AsGeoJSON(ST_Centroid(geometry))::jsonb))::json
-  WHERE geometry IS NOT NULL;
-
   ALTER TABLE suburbs ADD COLUMN IF NOT EXISTS position_json jsonb;
-  UPDATE suburbs
-  SET position_json = (COALESCE(position_json::jsonb, ST_AsGeoJSON("position")::jsonb))::json
-  WHERE "position" IS NOT NULL;
+
+  -- Backfill from PostGIS geometry columns only if they exist (legacy databases).
+  -- Fresh imports from db/import.sql already have jsonb/integer columns populated.
+  DO $guard$
+  BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'properties' AND column_name = 'geometry' AND udt_name = 'geometry'
+    ) THEN
+      UPDATE properties
+      SET geometry_json = (COALESCE(geometry_json::jsonb, ST_AsGeoJSON(geometry)::jsonb))::json
+      WHERE geometry IS NOT NULL;
+
+      UPDATE properties
+      SET
+        x1 = round(ST_XMin(geometry) * 100)::integer,
+        x2 = round(ST_XMax(geometry) * 100)::integer,
+        z1 = round(ST_YMin(geometry) * 100)::integer,
+        z2 = round(ST_YMax(geometry) * 100)::integer
+      WHERE geometry IS NOT NULL;
+
+      ALTER TABLE properties DROP COLUMN geometry;
+    END IF;
+
+    UPDATE properties
+    SET bounds = cube(
+      ARRAY[x1::float8, y1::float8, z1::float8],
+      ARRAY[x2::float8, y2::float8, z2::float8]
+    )
+    WHERE x1 IS NOT NULL AND y1 IS NOT NULL AND y2 IS NOT NULL AND bounds IS NULL;
+
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'islands' AND column_name = 'geometry' AND udt_name = 'geometry'
+    ) THEN
+      UPDATE islands
+      SET geometry_json = (COALESCE(geometry_json::jsonb, ST_AsGeoJSON(geometry)::jsonb))::json
+      WHERE geometry IS NOT NULL;
+
+      UPDATE islands
+      SET position_json = (COALESCE(position_json::jsonb, ST_AsGeoJSON(ST_Centroid(geometry))::jsonb))::json
+      WHERE geometry IS NOT NULL;
+
+      ALTER TABLE islands DROP COLUMN geometry;
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'suburbs' AND column_name = 'position' AND udt_name = 'geometry'
+    ) THEN
+      UPDATE suburbs
+      SET position_json = (COALESCE(position_json::jsonb, ST_AsGeoJSON("position")::jsonb))::json
+      WHERE "position" IS NOT NULL;
+
+      ALTER TABLE suburbs DROP COLUMN "position";
+    END IF;
+  END $guard$;
 
   DROP TABLE IF EXISTS streets CASCADE;
-
   DROP INDEX IF EXISTS idx_properties_geometry;
-
-  ALTER TABLE properties DROP COLUMN IF EXISTS geometry;
-  ALTER TABLE islands DROP COLUMN IF EXISTS geometry;
-  ALTER TABLE suburbs DROP COLUMN IF EXISTS "position";
-
   DROP EXTENSION IF EXISTS postgis CASCADE;
 $$
 );
