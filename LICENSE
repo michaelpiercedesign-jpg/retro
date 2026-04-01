@@ -2,14 +2,14 @@ Business Source License 1.1
 
 Parameters
 
-Licensor:       Nolan Consulting
+Licensor: Nolan Consulting
 
-Licensed Work:  The Cryptovoxels software, assets, and associated
-                source code.
+Licensed Work: The Cryptovoxels software, assets, and associated
+source code.
 
-Change Date:    For any specific commit to the Licensed Work, the
-                third anniversary of the date on which such commit
-                is publicly available.
+Change Date: For any specific commit to the Licensed Work, the
+third anniversary of the date on which such commit
+is publicly available.
 
 Change License: MIT License
 
@@ -77,13 +77,12 @@ any dispute or claim that arises out of or in connection with this License.
 
 Definitions:
 
-* "Official Nolan Consulting contracts" refers to the smart contracts
+- "Official Nolan Consulting contracts" refers to the smart contracts
   deployed and maintained by Nolan Consulting for the operation of the
   Cryptovoxels ecosystem (including but not limited to land parcels,
   wearables and fungible tokens).
-* "Publicly Available" refers to the moment code is pushed to a
-  public GitHub repository or integrated into the live production
-  environment at retro.voxels.com.
+- "Publicly Available" refers to the moment code is pushed to a
+  public GitHub repository.
 
 All other terms shall be interpreted in accordance with the Business
 Source License 1.1.
