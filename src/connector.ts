@@ -747,8 +747,21 @@ export default class Connector extends TypedEventTarget<{ avatar_joined: string 
     switch (cmd) {
       case '/lead': {
         this.allowFollow = !this.allowFollow
-        const status = this.allowFollow ? 'Leading enabled -- others can follow you' : 'Leading disabled'
-        this.addChat(status, undefined)
+        if (this.allowFollow) {
+          this.addChat('Leading enabled -- others can follow you', undefined)
+          const parcel = this.currentOrNearestParcel()
+          const location = parcel?.name || parcel?.address || 'the world'
+          const announcement: messages.ChatMessage = {
+            type: messages.MessageType.chat,
+            channel: GLOBAL_CHANNEL,
+            name: this.persona.user.name,
+            uuid: this.persona.uuid,
+            text: `is leading a group from ${location} -- type /follow ${this.persona.user.name} to join`,
+          }
+          this.send(announcement)
+        } else {
+          this.addChat('Leading disabled', undefined)
+        }
         return true
       }
       case '/follow': {
