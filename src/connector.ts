@@ -746,6 +746,10 @@ export default class Connector extends TypedEventTarget<{ avatar_joined: string 
     const [cmd, ...args] = text.trim().split(' ')
     switch (cmd) {
       case '/lead': {
+        if (!this.isLoggedIn) {
+          this.addChat('Sign in to lead', undefined)
+          return true
+        }
         this.allowFollow = !this.allowFollow
         if (this.allowFollow) {
           this.addChat('Leading enabled -- others can follow you', undefined)
