@@ -862,17 +862,23 @@ export default class Avatar extends Entity {
     const width = ctx.measureText(name).width + paddingLeftRight * 2
 
     const isLeading = this._allowFollow
-    ctx.fillStyle = isHighlighted ? '#338d48' : isLeading ? 'rgba(46, 125, 50, 0.85)' : 'rgba(34, 34, 34, 0.8)'
+    ctx.fillStyle = isHighlighted ? '#338d48' : 'rgba(34, 34, 34, 0.8)'
     ctx.beginPath()
     ctx.rect(256 - width / 2, 48, width, 64)
     ctx.fill()
+
+    if (isLeading) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+      ctx.lineWidth = 2
+      ctx.strokeRect(256 - width / 2, 48, width, 64)
+    }
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'
     ctx.fillText(name, 256, 94)
 
     if (isLeading) {
       ctx.font = "24px 'helvetica neue', sans-serif"
-      ctx.fillStyle = 'rgba(200, 255, 200, 0.9)'
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
       ctx.fillText('follow', 256, 42)
     }
 

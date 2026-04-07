@@ -153,7 +153,7 @@ const ChatInput = () => {
   return (
     <div>
       {followTarget && (
-        <div style="padding: 4px 8px; color: #a5d6a7; font-size: 12px;">
+        <div style="padding: 4px 8px; color: rgba(255, 255, 255, 0.7); font-size: 12px;">
           Following {followTarget.name} -- press any key to stop
         </div>
       )}
