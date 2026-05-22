@@ -14,6 +14,7 @@ import { Position, Rotation, Scale, Script } from '../../web/src/components/edit
 import { Animations } from '../avatar-animations'
 import { EmoteAnimation, Idle } from '../states'
 import { cameraPosition, cameraRotation } from '../utils/camera'
+import { emote as emoteParticles } from '../utils/emote'
 import { Advanced, FeatureEditor, FeatureEditorProps, FeatureID, SetParentDropdown, Toolbar, UuidReadOnly } from '../ui/features'
 import { FeatureMetadata, FeatureTemplate } from './_metadata'
 import { Feature2D } from './feature'
@@ -31,8 +32,56 @@ const DOCK_EMOJIS = ['🔥', '🙌', '❤️', '😂', '👏', '🎉']
 const DEFAULT_VOLUME = 0.7
 const MAX_VOLUME = 1
 const VOLUME_REFRESH_INTERVAL = 200
+const VIEWER_RETRY_INTERVAL = 20_000
+// LiveKit headcount milestones: small early, bigger celebration as the room grows.
+const VIEWER_MILESTONES = [2, 4, 7, 10, 25, 50] as const
+const MILESTONE_POLL_MS = 8000
+
+function celebrateLabel(n: number) {
+  if (n >= 50) return '50 here'
+  if (n >= 25) return '25 here'
+  if (n >= 10) return `${n} here`
+  if (n === 2) return 'someone joined'
+  return `${n} here`
+}
+
+function uuidBucket(uuid: string, mod: number) {
+  let h = 0
+  for (let i = 0; i < uuid.length; i++) h = (h + uuid.charCodeAt(i)) | 0
+  return Math.abs(h) % mod
+}
+
+function celebrateBursts(n: number) {
+  if (n >= 50) return { emojis: ['🎉', '🔥', '🙌', '❤️', '👏', '🎉', '🔥'], staggerMs: 280 }
+  if (n >= 25) return { emojis: ['🎉', '🔥', '🙌', '❤️', '🎉'], staggerMs: 380 }
+  if (n >= 10) return { emojis: ['🎉', '🔥', '🙌'], staggerMs: 300 }
+  if (n >= 7) return { emojis: ['🎉', '🔥'], staggerMs: 200 }
+  if (n >= 4) return { emojis: ['🎉', '👏'], staggerMs: 150 }
+  return { emojis: ['🎉'], staggerMs: 0 }
+}
+
+// Spread hype / spin / savage across the crowd so big rooms look chaotic, not synchronized.
+function celebrateMoves(n: number, uuid: string) {
+  const b = uuidBucket(uuid, 12)
+  const wild = [Animations.Hype, Animations.Spin, Animations.Savage, Animations.Celebration]
+  if (n >= 50) {
+    return { anims: [wild[b % 4], wild[(b + 5) % 4], Animations.Spin], gapMs: 1100 }
+  }
+  if (n >= 25) {
+    const pool = [Animations.Dance, Animations.Hype, Animations.Spin, Animations.Savage]
+    return { anims: [pool[b % 4], pool[(b + 3) % 4]], gapMs: 900 }
+  }
+  if (n >= 10) return { anims: [Animations.Dance], gapMs: 0 }
+  if (n >= 7) return { anims: [Animations.Dance], gapMs: 0 }
+  return { anims: [] as Animations[], gapMs: 0 }
+}
 const LIVEKIT_URL = 'https://voxels-7pvk06qt.livekit.cloud'
 const mobile = isMobile()
+
+function isRoomFullError(e: unknown) {
+  const msg = (e instanceof Error ? e.message : String(e ?? '')).toLowerCase()
+  return msg.includes('room is full') || msg.includes('participant') && (msg.includes('limit') || msg.includes('max') || msg.includes('full'))
+}
 
 // True when the page was opened via /live/:token and the guest pass targets this showbox.
 // The synthetic wallet `guest:*` and `?show=<uuid>` are both set by the server on redeem.
@@ -77,6 +126,8 @@ function syncGuestDisplayName(name: string) {
 
 type GuestMode = 'solo' | 'cohost'
 
+type ShowboxCelebrateState = { celebrate?: number; at?: number }
+
 function cohostIdentityPrefix(identity: string) {
   const i = identity.lastIndexOf('-')
   return i > 0 ? identity.slice(0, i) : identity
@@ -114,9 +165,104 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
   cohostCompositeRaf: number | null = null
   cohostMonitorEls: HTMLAudioElement[] = []
   cohostCompositeAttached = false
+  viewerRoomFull = false
+  viewerConnecting = false
+  viewerRetryInterval: ReturnType<typeof setInterval> | null = null
+  milestonePollInterval: ReturnType<typeof setInterval> | null = null
+  celebratedMilestones = new Set<number>()
+  lastCelebrateAt = 0
+  lastCelebrateN = 0
 
   roomName() {
     return `parcel-${this.parcel.id}`
+  }
+
+  receiveState(state: ShowboxCelebrateState) {
+    const n = state?.celebrate
+    const at = state?.at ?? 0
+    if (!n || !at || !this.isInCurrentParcel) return
+    if (at <= this.lastCelebrateAt || n <= this.lastCelebrateN) return
+    this.lastCelebrateAt = at
+    this.lastCelebrateN = n
+    this.runCelebrate(n)
+  }
+
+  playCelebrateMoves(anims: Animations[], gapMs: number) {
+    const persona = window.persona
+    const controls = window.connector?.controls
+    if (!persona || !controls || !anims.length) return
+    anims.forEach((anim, i) => {
+      setTimeout(() => {
+        if (this.disposed) return
+        persona.popState(controls)
+        persona.setState({ state: new EmoteAnimation(anim) }, controls)
+      }, i * gapMs)
+    })
+  }
+
+  runCelebrate(n: number) {
+    const pos = this.absolutePosition
+    const { emojis, staggerMs } = celebrateBursts(n)
+    emojis.forEach((emoji, i) => {
+      setTimeout(() => {
+        if (this.disposed) return
+        try {
+          emoteParticles(emoji, pos, this.scene)
+        } catch {}
+      }, i * staggerMs)
+    })
+
+    const uuid = window.persona?.uuid ?? ''
+    const { anims, gapMs } = celebrateMoves(n, uuid)
+    this.playCelebrateMoves(anims, gapMs)
+
+    app.showSnackbar(celebrateLabel(n), PanelType.Success)
+  }
+
+  async fetchViewerCount() {
+    try {
+      const r = await fetch(`/api/rooms/${this.roomName()}`)
+      if (!r.ok) return 0
+      const j = await r.json().catch(() => null)
+      return j?.room?.numParticipants ?? 0
+    } catch {
+      return 0
+    }
+  }
+
+  stopMilestonePoll() {
+    if (this.milestonePollInterval) {
+      clearInterval(this.milestonePollInterval)
+      this.milestonePollInterval = null
+    }
+    this.celebratedMilestones.clear()
+  }
+
+  fireMilestone(n: number) {
+    const at = Date.now()
+    this.lastCelebrateAt = at
+    this.lastCelebrateN = n
+    try {
+      this.parcel.sendStatePatch({ [this.uuid]: { celebrate: n, at } })
+    } catch {}
+    this.runCelebrate(n)
+  }
+
+  startMilestonePoll() {
+    this.stopMilestonePoll()
+    const tick = async () => {
+      if (!this.broadcastRoom || this.disposed) return
+      const count = await this.fetchViewerCount()
+      if (!count) return
+      for (const m of VIEWER_MILESTONES) {
+        if (count >= m && !this.celebratedMilestones.has(m)) {
+          this.celebratedMilestones.add(m)
+          this.fireMilestone(m)
+        }
+      }
+    }
+    tick()
+    this.milestonePollInterval = setInterval(tick, MILESTONE_POLL_MS)
   }
 
   get volume() {
@@ -377,6 +523,8 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
   }
 
   onExit = () => {
+    this.stopViewerRetry()
+    this.viewerRoomFull = false
     if (this.livekitRoom) {
       this.livekitRoom.disconnect()
       this.livekitRoom = null
@@ -386,8 +534,26 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
     }
   }
 
+  stopViewerRetry() {
+    if (this.viewerRetryInterval) {
+      clearInterval(this.viewerRetryInterval)
+      this.viewerRetryInterval = null
+    }
+  }
+
+  scheduleViewerRetry() {
+    if (this.viewerRetryInterval || this.disposed || !this.isInCurrentParcel) return
+    this.viewerRetryInterval = setInterval(() => {
+      if (this.disposed || !this.isInCurrentParcel || this.broadcastRoom || this.livekitRoom || this.viewerConnecting) return
+      if (this.viewerRoomFull) this.connectViewer()
+    }, VIEWER_RETRY_INTERVAL)
+  }
+
   dispose() {
     this._dispose()
+    this.stopMilestonePoll()
+    this.stopViewerRetry()
+    this.viewerRoomFull = false
     this.livekitRoom?.disconnect()
     this.livekitRoom = null
     this.stopStreamVolumePoll()
@@ -432,6 +598,11 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
       ctx.fillRect(w / 2 - bw / 2, h / 2 + 10, bw, bh)
       ctx.fillStyle = '#f5f5f0'
       ctx.fillText(cta, w / 2, h / 2 + 10 + bh / 2)
+    } else if (this.viewerRoomFull) {
+      ctx.fillStyle = '#f5f5f0'
+      ctx.fillText('this show is full', w / 2, h / 2 - 14)
+      ctx.fillStyle = '#888'
+      ctx.fillText('hang tight -- retrying for a spot', w / 2, h / 2 + 14)
     } else if (mobile && this.livekitRoom) {
       ctx.fillStyle = '#888'
       ctx.fillText('tap screen to listen', w / 2, h / 2)
@@ -455,11 +626,15 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
   }
 
   async connectViewer() {
-    if (this.livekitRoom) return
+    if (this.livekitRoom || this.viewerConnecting) return
+    this.viewerConnecting = true
     const res = await fetch(`/api/rooms/${this.roomName()}/token`, { credentials: 'include' })
       .then((r) => r.json())
       .catch(() => null)
-    if (!res?.token || this.disposed) return
+    if (!res?.token || this.disposed) {
+      this.viewerConnecting = false
+      return
+    }
 
     const room = new Room()
     this.livekitRoom = room
@@ -542,8 +717,21 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
       this.setPreview()
     })
 
-    await room.connect(LIVEKIT_URL, res.token).catch(() => null)
-    this.setPreview()
+    try {
+      await room.connect(LIVEKIT_URL, res.token)
+      this.viewerRoomFull = false
+      this.stopViewerRetry()
+    } catch (e) {
+      room.disconnect()
+      this.livekitRoom = null
+      if (isRoomFullError(e)) {
+        this.viewerRoomFull = true
+        this.scheduleViewerRetry()
+      }
+    } finally {
+      this.viewerConnecting = false
+      this.setPreview()
+    }
   }
 
   startBroadcastAudio() {
@@ -626,6 +814,7 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
   }
 
   stopBroadcast(silent = false) {
+    this.stopMilestonePoll()
     this.stopThumbCapture(silent)
     this.clearCohostMonitor()
     this.broadcastRoom?.disconnect()
@@ -1492,6 +1681,7 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
 
         setMobileDockLayout(true)
         setDesktopDockLayout(true)
+        this.startMilestonePoll()
       } catch (e) {
         status.textContent = e instanceof Error ? e.message : 'failed to connect'
         goBtn.disabled = false
