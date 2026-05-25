@@ -923,9 +923,10 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
 
   openBroadcastPanel() {
     if (this.broadcastPanel) {
-      this.broadcastPanel.remove()
-      this.broadcastPanel = null
-      this.stopBroadcast()
+      if (this.broadcastPanel.style.display === 'none') {
+        exitPointerLock()
+        this.broadcastPanel.style.display = 'flex'
+      }
       return
     }
 
@@ -1290,9 +1291,7 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
     closeBtn.textContent = 'close'
     Object.assign(closeBtn.style, { background: '#333', color: '#f5f5f0', border: '0', padding: '12px 16px', cursor: 'pointer', fontFamily: 'inherit', flex: '1', minHeight: '44px' })
     closeBtn.onclick = () => {
-      panel.remove()
-      this.broadcastPanel = null
-      this.stopBroadcast()
+      panel.style.display = 'none'
     }
 
     const row = document.createElement('div')
@@ -1709,6 +1708,7 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
             previewVideo.volume = 0
             previewVideo.playsInline = true
             Object.assign(previewVideo.style, { width: '100%', height: '100%', objectFit: 'cover', display: 'block' })
+            previewVideo.play().catch(() => {})
             const previewLabel = document.createElement('div')
             previewLabel.textContent = 'what your audience sees'
             Object.assign(previewLabel.style, { position: 'absolute', top: '4px', left: '6px', color: '#f5f5f0', fontSize: '11px', background: 'rgba(0,0,0,0.6)', padding: '2px 6px' })
@@ -1733,6 +1733,7 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
             previewVideo.volume = 0
             previewVideo.playsInline = true
             Object.assign(previewVideo.style, { width: '100%', height: '100%', objectFit: 'contain', display: 'block' })
+            previewVideo.play().catch(() => {})
             const previewLabel = document.createElement('div')
             previewLabel.textContent = 'what your audience sees'
             Object.assign(previewLabel.style, { position: 'absolute', top: '4px', left: '6px', color: '#f5f5f0', fontSize: '11px', background: 'rgba(0,0,0,0.6)', padding: '2px 6px' })
@@ -1766,15 +1767,18 @@ export default class Showbox extends Feature2D<ShowboxRecord> {
   }
 
   onClick() {
-    if (!this.broadcastRoom) {
-      const guest = isGuestForShowbox(this.uuid)
+    const guest = isGuestForShowbox(this.uuid)
+    const canHost = guest || this.parcel.canEdit
+    if (this.broadcastRoom && canHost) {
+      this.openBroadcastPanel()
+    } else if (!this.broadcastRoom) {
       if (this.isCohostMode()) {
-        if (guest || this.parcel.canEdit) {
+        if (canHost) {
           this.openBroadcastPanel()
         } else {
           this.startBroadcastAudio()
         }
-      } else if (!this.hasRemoteBroadcaster() && (guest || this.parcel.canEdit)) {
+      } else if (!this.hasRemoteBroadcaster() && canHost) {
         this.openBroadcastPanel()
       } else {
         this.startBroadcastAudio()
