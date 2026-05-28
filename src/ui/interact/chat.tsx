@@ -248,10 +248,6 @@ const ChatInput = () => {
   const onChatKeydown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       say(e)
-
-      if (!e.shiftKey) {
-        blur()
-      }
     } else if (e.key === 'Escape') {
       setMessage('')
       blur()
