@@ -813,10 +813,9 @@ export default class Connector extends TypedEventTarget<{ avatar_joined: string 
   }
 
   /** Shard chat blast when a showbox goes live (Watch link uses encoded coords). */
-  announceShowLive(hostName: string, location: string, encodedCoords: string) {
-    const name = hostName.trim()
+  announceShowLive(location: string, encodedCoords: string) {
     const coords = encodedCoords.trim()
-    if (!name || !coords) return
+    if (!coords) return
     const announcement: messages.ChatMessage = {
       type: messages.MessageType.chat,
       id: '',
@@ -918,7 +917,7 @@ export default class Connector extends TypedEventTarget<{ avatar_joined: string 
           type: messages.MessageType.chat,
           id: '',
           uuid: this.persona.uuid,
-          text: entityEncode(`Started a conga line at ${location}. Use /conga ${this.persona.user.name} to join from anywhere, or tap Join. [[conga:${this.persona.uuid}]]`),
+          text: entityEncode(`Started a conga line at ${location}. Use /conga ${this.persona.user.name} to join from anywhere, or tap [[conga:${this.persona.uuid}]]`),
         }
         this.send(announcement)
       }
