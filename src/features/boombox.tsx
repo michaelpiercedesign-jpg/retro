@@ -1,10 +1,11 @@
+import { duckRadio, unduckRadio } from '../../web/src/radio/global'
 import { BoomboxRecord } from '../../common/messages/feature'
 import { voxImporter } from '../../common/vox-import/vox-import'
-import { Position, Rotation, Script } from '../../web/src/components/editor'
+import { Position, Rotation, Behaviours, EditorProps } from '../../web/src/components/editor'
 import { AudioBus } from '../audio/audio-engine'
 import Avatar from '../avatar'
 import { BoomboxBroadcast, BroadcastStatus, openBoomboxBroadcastUI } from '../ui/boombox-broadcast'
-import { Advanced, FeatureEditor, FeatureEditorProps, FeatureID, SetParentDropdown, Toolbar, UuidReadOnly } from '../ui/features'
+import { Advanced, FeatureEditor, FeatureEditorProps, FeatureID, Toolbar } from '../ui/features'
 import { FeatureMetadata, FeatureTemplate } from './_metadata'
 import { Feature3D } from './feature'
 
@@ -138,7 +139,7 @@ export default class Boombox extends Feature3D<BoomboxRecord> {
       this.sound = null
     }
 
-    this.audio && this.audio.removeUserAudioReference(this)
+    unduckRadio(this)
   }
 
   receiveState(state: BoomBoxSharedState) {
@@ -164,13 +165,13 @@ export default class Boombox extends Feature3D<BoomboxRecord> {
   }
 
   refreshSoundtrackState() {
-    // pause the soundtrack if we are playing from boombox or have broadcast dialog open
+    // duck the radio while boombox audio is playing in parcel
     const playerInParcel = this.parcel === this.parcel.grid.currentOrNearestParcel()
 
     if ((this.sound && playerInParcel) || this.getBroadcasterOpen()) {
-      this.audio && this.audio.addUserAudioReference(this)
+      duckRadio(this)
     } else {
-      this.audio && this.audio.removeUserAudioReference(this)
+      unduckRadio(this)
     }
   }
 
@@ -374,29 +375,29 @@ class Editor extends FeatureEditor<Boombox> {
         </header>
         <div className="scrollContainer">
           <Toolbar feature={this.props.feature} scene={this.props.scene} />
-          {/* keys are provided so that the getState in the component is reset after gizmo is used */}
-          <Position feature={this.props.feature} key={this.props.feature.position.toString()} />
-          <Rotation feature={this.props.feature} key={this.props.feature.rotation.toString()} />
+          <EditorProps>
+            {/* keys are provided so that the getState in the component is reset after gizmo is used */}
+            <Position feature={this.props.feature} key={this.props.feature.position.toString()} />
+            <Rotation feature={this.props.feature} key={this.props.feature.rotation.toString()} />
 
-          <div className="f">
-            <label>Spatial Rolloff Factor</label>
-            <input type="range" step="0.1" min="0" max="5" value={this.state.rolloffFactor} onInput={(e) => this.setState({ rolloffFactor: parseFloat(e.currentTarget.value) })} />
-            <small>Choose how quickly the sound fades away as the player moves away from the emitter (higher values fade away faster)</small>
-          </div>
+            <div className="f">
+              <label>Spatial Rolloff Factor</label>
+              <input type="range" step="0.1" min="0" max="5" value={this.state.rolloffFactor} onInput={(e) => this.setState({ rolloffFactor: parseFloat(e.currentTarget.value) })} />
+              <small>Choose how quickly the sound fades away as the player moves away from the emitter (higher values fade away faster)</small>
+            </div>
 
-          <div className="f">
-            <label>Permissions</label>
-            <label>
-              <input type="checkbox" checked={this.state.authBroadcast} onChange={(e) => this.setState({ authBroadcast: e.currentTarget.checked })} />
-              Only collaborators can broadcast
-            </label>
-          </div>
-          <Advanced>
-            <FeatureID feature={this.props.feature} />
-            <SetParentDropdown feature={this.props.feature} />
-            <UuidReadOnly feature={this.props.feature} />
-            <Script feature={this.props.feature} />
-          </Advanced>
+            <div className="f">
+              <label>Permissions</label>
+              <label>
+                <input type="checkbox" checked={this.state.authBroadcast} onChange={(e) => this.setState({ authBroadcast: e.currentTarget.checked })} />
+                Only collaborators can broadcast
+              </label>
+            </div>
+            <Advanced>
+              <FeatureID feature={this.props.feature} />
+              <Behaviours feature={this.props.feature} />
+            </Advanced>
+          </EditorProps>
         </div>
       </section>
     )

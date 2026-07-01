@@ -8,10 +8,11 @@ import PgGridClusterMessageBroker from './impl/PgGridClusterMessageBroker'
 
 const verifyToken =
   (jwtSecretOrKey: string) =>
-  (token: string): Promise<{ wallet: string } | null> =>
+  (token: string): Promise<{ wallet: string; guest_pass?: string; parcel_id?: number } | null> =>
     jwtVerify(token, new TextEncoder().encode(jwtSecretOrKey), { algorithms: ['HS256'] })
       .then(({ payload }) => payload as any)
-      .then((decoded) => ({ wallet: decoded.wallet }) as { wallet: string })
+      // guest co-host jwts carry the pass + parcel binding - the shard uses it to auth showbox live patches
+      .then((decoded) => ({ wallet: decoded.wallet, guest_pass: decoded.guest_pass, parcel_id: decoded.parcel_id }) as { wallet: string; guest_pass?: string; parcel_id?: number })
       .catch((err) => {
         log.error(`grid-socket jwt verification error: ${err.toString()}`)
         return null
@@ -29,10 +30,7 @@ const createGridCluster = (): GridClusterMessageBroker => {
 const createGridSocket = (server: http.Server, jwtSecretOrKey: string, parcelEventEmitter: ParcelEventEmitter): GridSocket => {
   const gridCluster = createGridCluster()
 
-  parcelEventEmitter
-    .on('hashUpdate', (parcelId, hash) => gridCluster.publish({ type: 'hashUpdate', payload: { parcelId, hash } }))
-    .on('metaUpdate', (parcelId) => gridCluster.publish({ type: 'metaUpdate', payload: { parcelId } }))
-    .on('scriptUpdate', (parcelId) => gridCluster.publish({ type: 'scriptUpdate', payload: { parcelId } }))
+  parcelEventEmitter.on('metaUpdate', (parcelId) => gridCluster.publish({ type: 'metaUpdate', payload: { parcelId } })).on('scriptUpdate', (parcelId) => gridCluster.publish({ type: 'scriptUpdate', payload: { parcelId } }))
 
   return new GridSocket(server, '/grid/socket', verifyToken(jwtSecretOrKey), gridCluster)
 }

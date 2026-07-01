@@ -1,4 +1,5 @@
 import Avatar from './src/avatar'
+import BehavioursDoc from './src/behaviours-doc'
 import Conduct from './src/conduct'
 import EventPage from './src/event-page'
 import Explore from './src/explore'
@@ -7,7 +8,6 @@ import Parcels from './src/parcels'
 import Privacy from './src/privacy'
 import Space from './src/space'
 import Terms from './src/terms'
-import WebHeader from './src/web-header'
 import Womp from './src/womp'
 
 import * as passport from 'passport'
@@ -20,17 +20,11 @@ import db from '../server/pg'
 import LoadingPage from './src/loading-page'
 
 import { Express } from 'express'
+import path from 'path'
 import { SUPPORTED_CHAINS_BY_ID } from '../common/helpers/chain-helpers'
 import NotFound from './src/not-found'
 
-const renderPage = (content: any) => {
-  return renderComponent(
-    <div>
-      <WebHeader path="/" />
-      {content}
-    </div>,
-  )
-}
+const renderPage = (content: any) => renderComponent(content)
 
 export default function loadRoutes(app: Express) {
   const duration = '10 minutes'
@@ -78,6 +72,14 @@ export default function loadRoutes(app: Express) {
 
   app.get('/conduct', cache(duration), (req, res) => {
     res.send(renderPage(<Conduct />))
+  })
+
+  app.get('/behaviours', cache(duration), (req, res) => {
+    res.send(renderPage(<BehavioursDoc />))
+  })
+
+  app.get('/BEHAVIOURS.md', cache(duration), (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'BEHAVIOURS.md'))
   })
   app.get('/not-found', cache(duration), (req, res) => {
     res.send(renderPage(<NotFound path="/not-found" />))
@@ -177,14 +179,28 @@ export default function loadRoutes(app: Express) {
   })
 
   // These routes don't have any static content, are only available in the bundle
+  app.get('/account/go-live/broadcast', (req, res) => {
+    const q = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''
+    res.redirect(301, `/golive/broadcast${q}`)
+  })
+  app.get('/account/go-live', (req, res) => {
+    const q = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''
+    res.redirect(301, `/golive${q}`)
+  })
+
   const dynamicRoutes = [
     { path: '/propose/*', cache: '1 minute' },
+    { path: '/admin', cache: '1 minute' },
     { path: '/map', cache: '1 minute' },
     { path: '/mail', cache: '1 minute' },
     { path: '/home', cache: '1 minute' },
+    { path: '/chat', cache: '1 minute' },
     { path: '/account', cache: '1 minute' },
     { path: '/account/edit', cache: '1 minute' },
+    { path: '/golive', cache: '1 minute' },
+    { path: '/golive/broadcast', cache: '1 minute' },
     { path: '/login', cache: '1 minute' },
+    { path: '/logout', cache: false },
     { path: '/account/:section', cache: '30 seconds' },
     { path: '/costumes/', cache: '30 seconds' },
     { path: '/assets', cache: '1 minute' },
@@ -202,6 +218,7 @@ export default function loadRoutes(app: Express) {
     { path: '/new', cache: '1 minute' },
     { path: '/events', cache: '1 minute' },
     { path: '/events/*', cache: '1 minute' },
+    { path: '/shop', cache: '1 minute' },
     { path: '/islands', cache: '1 minute' },
     { path: '/islands/:id', cache: '1 minute' },
     { path: '/parcels/:id', cache: '1 minute' },
@@ -210,6 +227,7 @@ export default function loadRoutes(app: Express) {
     { path: '/search', cache: '1 minute' },
     { path: '/womps', cache: '1 minute' },
     { path: '/metrics', cache: false },
+    { path: '/radio', cache: '1 minute' },
     { path: '/spaces', cache: duration },
   ] as const
 

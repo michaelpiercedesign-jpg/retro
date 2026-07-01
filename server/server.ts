@@ -33,6 +33,7 @@ import PlayController from './controllers/play'
 import SpacesController from './controllers/spaces'
 import MetricsController from './controllers/metrics'
 import ModelsController from './controllers/models'
+import RadioController from './controllers/radio'
 
 import cache, { defaultCache, noCache } from './cache'
 import db, { pgp } from './pg'
@@ -202,9 +203,8 @@ preCorsController(passport, app)
 if (config.isDevelopment) {
   const protocol = 'http'
 
-  // In dev mode we need to proxy to the webpack dev servers
+  // In dev mode we need to proxy to the single webpack dev server
   app.use('/proxy/web', cache(false), proxy(`${protocol}://localhost:9200`))
-  app.use('/proxy/client', cache(false), proxy(`${protocol}://localhost:9100`))
   app.use(cors())
 
   // uncomment to test csp settings in report only mode
@@ -247,20 +247,13 @@ if (config.isDevelopment) {
   )
 }
 
-app.get(`/${currentVersion}-client.js`, cache('1 day'), (req, res) => {
-  return res.sendFile(path.join(__dirname, '..', 'dist', `${currentVersion}-client.js`))
+// THE GREAT MERGE: one bundle, one stylesheet.
+app.get(`/${currentVersion}-app.js`, cache('1 day'), (req, res) => {
+  return res.sendFile(path.join(__dirname, '..', 'dist', `${currentVersion}-app.js`))
 })
 
-app.get(`/${currentVersion}-web.js`, cache('1 day'), (req, res) => {
-  return res.sendFile(path.join(__dirname, '..', 'dist', `${currentVersion}-web.js`))
-})
-
-app.get(`/${currentVersion}-web.css`, cache(config.isDevelopment ? false : '1 day'), (req, res) => {
-  return res.sendFile(path.join(__dirname, '..', 'dist', `web.css`))
-})
-
-app.get(`/${currentVersion}-client.css`, cache('1 day'), (req, res) => {
-  return res.sendFile(path.join(__dirname, '..', 'dist', `client.css`))
+app.get(`/${currentVersion}-app.css`, cache(config.isDevelopment ? false : '1 day'), (req, res) => {
+  return res.sendFile(path.join(__dirname, '..', 'dist', `app.css`))
 })
 
 app.use(
@@ -343,7 +336,7 @@ LivekitController(db, passport, app)
 RadarController(app)
 
 // Guest broadcast passes (token-based access to a specific Showbox without an account)
-GuestPassesController(db, passport, app, livekitService)
+GuestPassesController(db, passport, app, livekitService, gridSocket)
 
 // The NFTs
 NftController(db, passport, app)
@@ -356,6 +349,9 @@ ModelsController(app)
 
 // Metrics controller
 MetricsController(db, app)
+
+// Radio (soundtrack station + DJ spots)
+RadioController(db, app)
 
 // Main client controller
 PlayController(db, passport, app)
@@ -472,35 +468,6 @@ app.get('/grid/parcels/:id', cache('10 seconds'), async (req, res) => {
   }
 
   res.json({ success: true, parcel: parcel.summary })
-})
-
-app.get('/grid/parcels/:id/at/:hash', async (req, res) => {
-  const MAX_AGE = 60 * 60 * 24 * 365
-
-  const id = parseInt(req.params.id, 10)
-
-  if (isNaN(id)) {
-    res.status(404)
-    return
-  }
-
-  const parcel = await Parcel.load(id)
-
-  if (!parcel) {
-    noCache(res)
-    res.status(404).json({ success: false, message: `No parcel found with id ${id}` })
-    return
-  }
-
-  if (parcel.hash !== req.params.hash) {
-    noCache(res)
-    res.status(404).json({ success: false, message: `Incorrect hash expected ${parcel.hash}` })
-  } else {
-    const summary = parcel.summary
-
-    res.setHeader('Cache-Control', `public,max-age=${MAX_AGE},immutable`)
-    res.json({ success: true, parcel: summary })
-  }
 })
 
 // Islands baby!

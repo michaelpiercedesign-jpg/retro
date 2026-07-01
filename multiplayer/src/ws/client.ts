@@ -24,6 +24,7 @@ export type ClientConnectionInformation = {
 }
 
 const MAX_CHAT_MESSAGE_LENGTH = 1024
+const MAX_RECENT_CHAT = 1000
 
 export class Client {
   private _disposeAbortController = new AbortController()
@@ -176,6 +177,12 @@ export class Client {
       case messages.MessageType.metric:
         this.handleMetric(msg)
         break
+      case messages.MessageType.behaviourState:
+        this.shard.behaviourRelay.handleState(this, msg, message)
+        break
+      case messages.MessageType.behaviourSignal:
+        this.shard.behaviourRelay.handleSignal(this, msg, message)
+        break
       default:
         console.error(`unknown message type ${(msg as any).type}`, this.whois())
         break
@@ -197,7 +204,7 @@ export class Client {
     const stamped: messages.ChatMessage = { ...msg, id: uuidv7(), avatar: this.avatar ?? undefined }
     const data = toBuffer(messages.ChatEncoder(stamped))
     this.shard.recentChat.push(stamped)
-    if (this.shard.recentChat.length > 20) this.shard.recentChat.shift()
+    if (this.shard.recentChat.length > MAX_RECENT_CHAT) this.shard.recentChat.shift()
     this.shard.broadcastFromClient(stamped, data, this.clientUUID)
   }
 
@@ -320,6 +327,7 @@ export class Client {
     if (parcelId != null && this.lastSeenParcel !== parcelId) {
       this.lastSeenParcel = parcelId
       this.shard.onRadarEvent?.({ type: 'move', uuid: this.clientUUID, avatar: this.avatar, parcel: parcelId })
+      this.shard.behaviourRelay.sendSnapshot(this, parcelId)
     }
     const anonId = this.anonymizedClientId()
     const position = msg.position

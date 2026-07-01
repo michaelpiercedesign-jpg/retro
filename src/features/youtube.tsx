@@ -1,10 +1,11 @@
+import { duckRadio, unduckRadio } from '../../web/src/radio/global'
 import { h } from 'preact'
 import { isBatterySaver, isMobile } from '../../common/helpers/detector'
 import { YoutubeRecord } from '../../common/messages/feature'
 import { CSS3DObject, CSS3DRenderer } from '../../vendor/CSS3DRenderer'
-import { Position, Rotation, Scale, Script } from '../../web/src/components/editor'
+import { Position, Rotation, Scale, Behaviours, EditorProps } from '../../web/src/components/editor'
 import { fetchNoImageTexture, fetchTexture } from '../textures/textures'
-import { Advanced, FeatureEditor, FeatureEditorProps, FeatureID, SetParentDropdown, Toolbar, UuidReadOnly } from '../ui/features'
+import { Advanced, FeatureEditor, FeatureEditorProps, FeatureID, Toolbar } from '../ui/features'
 import { isURL } from '../utils/helpers'
 import { FeatureMetadata, FeatureTemplate } from './_metadata'
 import { Feature2D } from './feature'
@@ -195,7 +196,7 @@ export default class Youtube extends Feature2D<YoutubeRecord> {
     this.autoStopTimeout && clearTimeout(this.autoStopTimeout)
 
     if (this.playing) {
-      this.hasAudio && this.audio?.addUserAudioReference(this)
+      this.hasAudio && duckRadio(this)
 
       // fade it back in!
       this.fadeIn(AUTOPLAY_FADE_TIME)
@@ -212,7 +213,7 @@ export default class Youtube extends Feature2D<YoutubeRecord> {
     // start fading out sound when leaving parcel, only remove once zero, fade back in on reentry (if not too late)
     this.fadeOut(fadeoutTime)
 
-    this.audio?.removeUserAudioReference(this)
+    unduckRadio(this)
 
     // give them 10 seconds to come back before restarting audio
     this.autoStopTimeout = setTimeout(
@@ -322,7 +323,7 @@ export default class Youtube extends Feature2D<YoutubeRecord> {
   onClick() {
     if (this.isTwitch) {
       window.open('https://twitch.tv/' + this.videoId, '_blank')
-      this.parcelScript?.dispatch('click', this, {})
+      this.behaviours?.dispatch(this.uuid, 'click')
       return
     }
     if (this.playing) {
@@ -334,14 +335,14 @@ export default class Youtube extends Feature2D<YoutubeRecord> {
     } else {
       this.play()
     }
-    this.parcelScript?.dispatch('click', this, {})
+    this.behaviours?.dispatch(this.uuid, 'click')
   }
 
   pause() {
     if (this.player) {
       this.player.pause()
       this.paused = true
-      this.audio?.removeUserAudioReference(this)
+      unduckRadio(this)
     }
   }
 
@@ -349,7 +350,7 @@ export default class Youtube extends Feature2D<YoutubeRecord> {
     if (this.player) {
       this.player.unpause()
       this.paused = false
-      this.hasAudio && this.audio?.addUserAudioReference(this)
+      this.hasAudio && duckRadio(this)
     }
   }
 
@@ -359,7 +360,7 @@ export default class Youtube extends Feature2D<YoutubeRecord> {
     this.playing = false
 
     // allow soundtrack to play again
-    this.audio?.removeUserAudioReference(this)
+    unduckRadio(this)
 
     if (this.player) {
       this.player.dispose()
@@ -375,7 +376,7 @@ export default class Youtube extends Feature2D<YoutubeRecord> {
       this.player.dispose()
       this.player = null
     }
-    this.audio?.removeUserAudioReference(this)
+    unduckRadio(this)
   }
 
   play() {
@@ -406,6 +407,10 @@ export default class Youtube extends Feature2D<YoutubeRecord> {
       ratio = 4 / 3
     }
 
+    if (YoutubePlayer.disabled) {
+      return
+    }
+
     this.player = new YoutubePlayer(this, this.scene, ratio)
     this.player.volume = this.volume
     this.player.rolloffFactor = this.rolloffFactor
@@ -415,7 +420,7 @@ export default class Youtube extends Feature2D<YoutubeRecord> {
     }
 
     // prevent soundtrack from playing
-    this.hasAudio && this.audio?.addUserAudioReference(this)
+    this.hasAudio && duckRadio(this)
   }
 }
 
@@ -482,67 +487,67 @@ class Editor extends FeatureEditor<Youtube> {
         </header>
         <div className="scrollContainer">
           <Toolbar feature={this.props.feature} scene={this.props.scene} />
-          {/* keys are provided so that the getState in the component is reset after gizmo is used */}
-          <Position feature={this.props.feature} key={this.props.feature.position.toString()} />
-          <Scale feature={this.props.feature} key={this.props.feature.scale.toString()} />
-          <Rotation feature={this.props.feature} key={this.props.feature.rotation.toString()} />
-
-          <div className="f">
-            <label>URL</label>
-            <input type="text" value={this.state.url} onInput={(e) => this.setState({ url: e.currentTarget.value })} />
-
-            <small>
-              Supported URLs:
-              <br /> * Youtube single video
-              <br /> * Twitch channel
-            </small>
-          </div>
-
-          <div className="f">
-            <label>Preview Image URL (optional)</label>
-            <input type="text" value={this.state.previewUrl} onInput={(e) => this.setState({ previewUrl: e.currentTarget.value })} />
-            <small>This image will show before the user plays the video. If left empty, uses thumbnail provided by the service.</small>
-          </div>
-          <Advanced>
-            <FeatureID feature={this.props.feature} />
-            <SetParentDropdown feature={this.props.feature} />
+          <EditorProps>
+            {/* keys are provided so that the getState in the component is reset after gizmo is used */}
+            <Position feature={this.props.feature} key={this.props.feature.position.toString()} />
+            <Scale feature={this.props.feature} key={this.props.feature.scale.toString()} />
+            <Rotation feature={this.props.feature} key={this.props.feature.rotation.toString()} />
 
             <div className="f">
-              <label>Video size ratio</label>
-              <input type="radio" checked={this.props.feature.description.screenRatio === '43'} onChange={this.changeRatio.bind(this)} name="ratio" value="43" /> 4:3&nbsp;&nbsp;&nbsp;
-              <input type="radio" checked={this.props.feature.description.screenRatio === '169'} onChange={this.changeRatio.bind(this)} name="ratio" value="169" /> 16:9
+              <label>URL</label>
+              <input type="text" value={this.state.url} onInput={(e) => this.setState({ url: e.currentTarget.value })} />
+
+              <small>
+                Supported URLs:
+                <br /> * Youtube single video
+                <br /> * Twitch channel
+              </small>
             </div>
 
             <div className="f">
-              <label>
-                <input checked={this.state.autoplay} onInput={(e) => this.setState({ autoplay: e.currentTarget.checked })} type="checkbox" />
-                Autoplay
-              </label>
-              <small>Play when someone enters the parcel</small>
+              <label>Preview Image URL (optional)</label>
+              <input type="text" value={this.state.previewUrl} onInput={(e) => this.setState({ previewUrl: e.currentTarget.value })} />
+              <small>This image will show before the user plays the video. If left empty, uses thumbnail provided by the service.</small>
             </div>
+            <Advanced>
+              <FeatureID feature={this.props.feature} />
 
-            <div className="f">
-              <label>
-                <input checked={this.state.loop} onInput={(e) => this.setState({ loop: e.currentTarget.checked })} type="checkbox" />
-                Loop (repeat forever)
-              </label>
-              <small>Loop playback until the player leaves your parcel</small>
-            </div>
+              <div className="f">
+                <label>Video size ratio</label>
+                <input type="radio" checked={this.props.feature.description.screenRatio === '43'} onChange={this.changeRatio.bind(this)} name="ratio" value="43" /> 4:3&nbsp;&nbsp;&nbsp;
+                <input type="radio" checked={this.props.feature.description.screenRatio === '169'} onChange={this.changeRatio.bind(this)} name="ratio" value="169" /> 16:9
+              </div>
 
-            <div className="f">
-              <label>Spatial Rolloff Factor</label>
-              <input type="range" step="0.1" min="0" max="5" value={this.state.rolloffFactor} onChange={(e) => this.setState({ rolloffFactor: parseFloat(e.currentTarget.value) })} />
-              <small>Choose how quickly the sound fades away as the player moves away from the emitter (higher values fade away faster)</small>
-            </div>
+              <div className="f">
+                <label>
+                  <input checked={this.state.autoplay} onInput={(e) => this.setState({ autoplay: e.currentTarget.checked })} type="checkbox" />
+                  Autoplay
+                </label>
+                <small>Play when someone enters the parcel</small>
+              </div>
 
-            <div className="f">
-              <label>Volume</label>
-              <input type="range" step="0.01" min="0" max={MAX_VOLUME} value={this.state.volume} onChange={(e) => this.setState({ volume: parseFloat(e.currentTarget.value) })} />
-            </div>
+              <div className="f">
+                <label>
+                  <input checked={this.state.loop} onInput={(e) => this.setState({ loop: e.currentTarget.checked })} type="checkbox" />
+                  Loop (repeat forever)
+                </label>
+                <small>Loop playback until the player leaves your parcel</small>
+              </div>
 
-            <UuidReadOnly feature={this.props.feature} />
-            <Script feature={this.props.feature} />
-          </Advanced>
+              <div className="f">
+                <label>Spatial Rolloff Factor</label>
+                <input type="range" step="0.1" min="0" max="5" value={this.state.rolloffFactor} onChange={(e) => this.setState({ rolloffFactor: parseFloat(e.currentTarget.value) })} />
+                <small>Choose how quickly the sound fades away as the player moves away from the emitter (higher values fade away faster)</small>
+              </div>
+
+              <div className="f">
+                <label>Volume</label>
+                <input type="range" step="0.01" min="0" max={MAX_VOLUME} value={this.state.volume} onChange={(e) => this.setState({ volume: parseFloat(e.currentTarget.value) })} />
+              </div>
+
+              <Behaviours feature={this.props.feature} />
+            </Advanced>
+          </EditorProps>
         </div>
       </section>
     )
@@ -565,6 +570,7 @@ export interface IYoutubePlayer {
 }
 
 class YoutubePlayer {
+  static disabled = true
   static depthMask: BABYLON.StandardMaterial
   static initiated: boolean
   static renderObservable: BABYLON.Observer<BABYLON.Scene> | null
@@ -751,6 +757,10 @@ class YoutubePlayer {
   }
 
   addIframe() {
+    if (this.feature.isTwitch) {
+      return // twitch playback disabled: do nothing
+    }
+
     this.iframe = document.createElement('iframe')
     this.iframe.id = 'video-' + this.feature.videoId
     this.iframe.style.width = this.width + 'px'

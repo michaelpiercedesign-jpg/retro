@@ -156,7 +156,7 @@ export default abstract class Controls implements IControls {
     this.reticuleHighlight.setEnabled(false)
     this.reticuleHighlight.parent = this.camera
 
-    if (isDesktop() && window.config.wantsUI) {
+    if (isDesktop()) {
       this.scene.registerBeforeRender(() => {
         // Show the reticule in 20% visibility in 3rd person mode.
         this.reticuleNormal.visibility = hasPointerLock() || this.hasGamepad ? (this.firstPersonView ? 1 : 0.2) : 0
@@ -236,35 +236,77 @@ export default abstract class Controls implements IControls {
     }
   }
 
-  featureClickHandler(eventData: BABYLON.PointerInfo) {
-    // Left-click pointerdown in lock mode
-    // Note that we use POINTERTAP so it's the same event that captures pointerlock
-    // This means that the pointerlock capture can "skipNextObservers" and supress this behavour
-    if (eventData.event.button === 0 && eventData.type === BABYLON.PointerEventTypes.POINTERPICK && this.isFeatureClickingAllowed()) {
-      // Don't allow feature clicking while the UI is visible
-      if (window.ui?.visible || window.ui?.activeTool) {
-        return
-      }
-      const distance = eventData.pickInfo?.distance || Infinity
-      const parcel = (eventData?.pickInfo?.pickedMesh as MeshExtended | undefined)?.feature?.parcel
-      // Dont allow clicking if user is far away; UNLESS the feature is from a parcel you can edit
-      if (distance > this.MAX_PICK_DISTANCE && !parcel?.canEdit) return
-      const candidateHandler = (eventData?.pickInfo?.pickedMesh as MeshExtended).cvOnLeftClick
+  // Ben's reticule pick (1c4cec3) used scene.pick() without pointerMovePredicate, so build-mode
+  // picks hit avatar/features instead of voxel colliders. Tools pass useMovePredicate=true;
+  // context menu / locked click use unpredicated center ray when no tool is active.
+  pickAtView(x?: number, y?: number, useMovePredicate = false): BABYLON.PickingInfo | null {
+    const cam = this.camera
+    if (!cam) return null
 
-      if (candidateHandler !== undefined) {
-        candidateHandler(eventData?.pickInfo)
+    const saved = cam.position.clone()
+    try {
+      // Only third person needs to move the pick camera back to match the rendered view.
+      // First person picks with the live camera (same path as the working unlocked pick),
+      // so the ray starts at the true eye, not the persona origin.
+      if (!window.config.isOrbit && !this.firstPersonView && this.persona) {
+        const q = BABYLON.Quaternion.RotationYawPitchRoll(cam.rotation.y, cam.rotation.x, cam.rotation.z)
+        const back = new BABYLON.Vector3(0, 0, -1).rotateByQuaternionToRef(q, new BABYLON.Vector3())
+        cam.position.copyFrom(this.persona.position.add(back.scale(this.cameraDistance)))
       }
+
+      const predicate = useMovePredicate ? this.scene.pointerMovePredicate : undefined
+      const engine = this.scene.getEngine()
+      // scene.pick wants CSS pixels; getRenderWidth is device pixels. Convert via the hardware
+      // scaling level (set to 1/dpr) or the reticule center is off by dpr on hi-dpi screens.
+      const scaling = engine.getHardwareScalingLevel()
+      const px = x ?? (engine.getRenderWidth() * scaling) / 2
+      const py = y ?? (engine.getRenderHeight() * scaling) / 2
+      const pick = this.scene.pick(px, py, predicate, false, cam)
+
+      if (pick?.pickedPoint) pick.pickedPoint = pick.pickedPoint.subtract(this.worldOffset.position)
+      return pick ?? null
+    } finally {
+      cam.position.copyFrom(saved)
+    }
+  }
+
+  pickAtReticule() {
+    return this.pickAtView(undefined, undefined, !!window.ui?.activeTool)
+  }
+
+  pickForPointer(pickInfo?: BABYLON.PickingInfo | null) {
+    if (hasPointerLock()) {
+      return this.pickAtView(undefined, undefined, true)
+    }
+    if (!window.config.isOrbit && !this.firstPersonView) {
+      return this.pickAtView(this.scene.pointerX, this.scene.pointerY, true) ?? pickInfo ?? null
+    }
+    return pickInfo ?? null
+  }
+
+  lockedLeftClick(pickInfo?: BABYLON.PickingInfo | null) {
+    if (!pickInfo) return
+    if (window.ui?.visible || window.ui?.activeTool) return
+    const distance = pickInfo.distance || Infinity
+    const parcel = (pickInfo.pickedMesh as MeshExtended | undefined)?.feature?.parcel
+    if (distance > this.MAX_PICK_DISTANCE && !parcel?.canEdit) return
+    const handler = (pickInfo.pickedMesh as MeshExtended | undefined)?.cvOnLeftClick
+    if (handler) handler(pickInfo)
+  }
+
+  featureClickHandler(eventData: BABYLON.PointerInfo) {
+    if (isDesktop()) return
+    if (eventData.event.button === 0 && eventData.type === BABYLON.PointerEventTypes.POINTERPICK) {
+      this.lockedLeftClick(eventData.pickInfo)
     }
   }
 
   handleContextClick(pickInfo?: BABYLON.PickingInfo | null) {
     if (!pickInfo) return
 
-    if (pickInfo.pickedMesh && 'feature' in pickInfo.pickedMesh && pickInfo.pickedMesh['feature'] instanceof Feature) {
-      const feature = pickInfo.pickedMesh['feature']
-      if (feature.onContextClick()) return
-      // we fall back to viewing parcel info if the onContextClick isn't handled by feature
-    }
+    const picked = featureFromPick(pickInfo)
+    const feature = picked?.mostParent
+    if (feature?.onContextClick()) return
 
     if (pickInfo.pickedMesh && pickInfo.pickedMesh.metadata?.avatar instanceof Avatar) {
       const avatar: Avatar = pickInfo.pickedMesh.metadata.avatar
@@ -401,14 +443,7 @@ export default abstract class Controls implements IControls {
   }
 
   toggleFlying() {
-    if (!this.grounded) {
-      // allow user to escape ungrounded state by pressing "F"
-      // without this, if a user spawns in the air, they will be stuck flying until they get near the ground
-      this.flying = false
-      this.grounded = true
-    } else {
-      this.setFlying(!this.flying)
-    }
+    this.setFlying(!this.flying)
   }
 
   // called on spawn and teleport
@@ -504,6 +539,7 @@ export default abstract class Controls implements IControls {
 
   startConga(target: Avatar) {
     if (target.isDisposed()) return
+    this.canvas.focus() // joining via a chat link leaves focus on the <a>; canvas needs focus or WASD/Escape can't leave the line
     this.congaTarget = target
     this.congaSyncGraceUntil = Date.now() + 2500
     this.congaSawLeaderInConga = false
@@ -529,6 +565,11 @@ export default abstract class Controls implements IControls {
     this.connector.clearCongaLeaderStartedBanner()
     this.connector.inConga = false
     this.connector.beginCongaJoinHintSuppressionAfterLeave()
+  }
+
+  /** The avatar who started this line (head of the chain), for UI. Null when leading or not in a line. */
+  get congaLeaderAvatar(): Avatar | null {
+    return this.congaTarget ? this.resolveCongaLeaderAvatar(this.congaTarget) : null
   }
 
   /** Walk toward conga head using each avatar's congaFollowsUuid (who they follow). Old clients omit it; then `first` is used. */
@@ -663,13 +704,6 @@ export default abstract class Controls implements IControls {
     )
   }
 
-  /**
-   * Are features able to be clicked on? Overridden in device-specific control classes
-   */
-  isFeatureClickingAllowed(): boolean {
-    return true
-  }
-
   protected _handleGroundUnloaded() {
     this.grounded = false
   }
@@ -759,4 +793,13 @@ function generateReticule(scene: BABYLON.Scene, highlight = false) {
   // }
 
   return reticule
+}
+
+export function featureFromPick(pickInfo?: BABYLON.PickingInfo | null): Feature | null {
+  const mesh = pickInfo?.pickedMesh as MeshExtended | null
+  if (!mesh) return null
+  if (mesh.feature) return mesh.feature
+  const parent = mesh.parent as MeshExtended | null
+  if (parent?.feature) return parent.feature
+  return null
 }

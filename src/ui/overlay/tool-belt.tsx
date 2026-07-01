@@ -8,7 +8,6 @@ import Snackbar from '../../../web/src/components/snackbar'
 import Parcel from '../../parcel'
 import { SelectionMode } from '../../tools/voxel'
 import UserInterface from '../../user-interface'
-import CustomizeVoxels from './customize-voxels'
 
 const DEFAULT_TILESET = '/textures/atlas-ao.png'
 
@@ -25,7 +24,6 @@ const VoxelToolBelt = ({ parcel, scene }: Props) => {
   const [tileset, setTileset] = useState<string | undefined>(parcel.tileset || undefined)
   const [palette, setPalette] = useState<string[] | undefined>(parcel.palette || undefined)
   const [tintChooser, setTintChooser] = useState(false)
-  const [tintModalOpen, setTintModalOpen] = useState(false)
   const [texture, setTexture] = useState<number | undefined>(window.ui?.voxelTool.texture)
   const [tint, setTint] = useState<number | undefined>(window.ui?.voxelTool.tint)
   const [page, setPage] = useState(0)
@@ -75,15 +73,6 @@ const VoxelToolBelt = ({ parcel, scene }: Props) => {
   }, [tintChooser])
 
   useEffect(() => {
-    if (!tintModalOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setTintModalOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [tintModalOpen])
-
-  useEffect(() => {
     setTileset(parcel.tileset)
     setPalette(parcel.palette)
   }, [parcel.id])
@@ -104,7 +93,7 @@ const VoxelToolBelt = ({ parcel, scene }: Props) => {
   }
 
   const openTintModal = () => {
-    setTintModalOpen(true)
+    ui?.setPane('voxels')
     setTintChooser(false)
   }
 
@@ -115,6 +104,7 @@ const VoxelToolBelt = ({ parcel, scene }: Props) => {
     ui.voxelTool.tint = index
     setTint(index)
     setTintChooser(false)
+    activateBuildTool()
   }
 
   const selectTexture = (index: number) => {
@@ -245,16 +235,6 @@ const VoxelToolBelt = ({ parcel, scene }: Props) => {
           </div>
         </div>
       </div>
-      {tintModalOpen && (
-        <div class="tint-modal-backdrop" onClick={() => setTintModalOpen(false)}>
-          <div class="tint-modal-panel" onClick={(e) => e.stopPropagation()}>
-            <button type="button" class="tint-modal-close" title="Close" aria-label="Close" onClick={() => setTintModalOpen(false)}>
-              x
-            </button>
-            <CustomizeVoxels parcel={parcel} scene={scene} />
-          </div>
-        </div>
-      )}
     </Fragment>
   )
 }

@@ -116,6 +116,11 @@ export const EasingDescription = t.union([
 ])
 export type EasingDescription = t.TypeOf<typeof EasingDescription>
 
+// Inline behaviour: lua source lives on the feature. Pick a preset or have an LLM
+// write one - behaviours never touch the asset library.
+export const Behaviour = t.type({ name: t.string, code: t.string })
+export type Behaviour = t.TypeOf<typeof Behaviour>
+
 // Message descriptions for parcel features
 export const FeatureCommon = t.intersection(
   [
@@ -144,6 +149,7 @@ export const FeatureCommon = t.intersection(
         triggerIsAudible: t.boolean,
         link: NullableStr,
         script: NullableStr,
+        behave: t.array(Behaviour),
         animation: t.type({
           destination: AnimationDestination,
           keyframes: t.array(KeyFrame),
@@ -325,6 +331,9 @@ export const ShowboxRecord = t.intersection(
         rolloffFactor: t.number,
         volume: t.number,
         guestMode: t.union([t.literal('solo'), t.literal('cohost')]),
+        screenShape: t.union([t.literal('landscape'), t.literal('portrait')]),
+        mirrorSource: t.union([t.literal('auto'), t.literal('host'), t.literal('collaborator'), t.literal('guest')]),
+        angleMode: t.boolean,
       },
       TYPE_SPECIFIC,
     ),
