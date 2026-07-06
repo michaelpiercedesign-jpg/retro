@@ -1,6 +1,6 @@
 import { createPortal } from 'preact/compat'
 import { useEffect, useState } from 'preact/hooks'
-import { isMobile } from '../../../common/helpers/detector'
+import { isEmbedded, isMobile, isMobileMedia } from '../../../common/helpers/detector'
 import { app, AppEvent } from '../state'
 
 const STORAGE_KEY = 'controls-hint-seen'
@@ -22,7 +22,8 @@ function markHintSeen() {
   } catch {}
 }
 
-let dismissed = hintSeen()
+// no room for a hint on phone screens or in iframe embeds
+let dismissed = hintSeen() || isMobileMedia() || isEmbedded()
 
 export function FirstTimeInstructions() {
   const [show, setShow] = useState(!dismissed)
