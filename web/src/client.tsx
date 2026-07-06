@@ -24,6 +24,9 @@ export class Client extends Component<FrameProps, FrameState> {
     if (!canUseDom) {
       return
     }
+    // in-world styling (grid, sidebar-closed) must apply from first paint, not after the
+    // engine boots - on phones the details pane was sitting open for the whole boot.
+    document.body.classList.add('in-world')
     void boot().then((ui) => {
       this.setState({ ui })
       this.adopt()
