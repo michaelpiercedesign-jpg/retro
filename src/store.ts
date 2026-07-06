@@ -2,6 +2,7 @@ import type Parcel from './parcel'
 import Feature from './features/feature'
 import Group from './features/group'
 import { signal } from '@preact/signals'
+import { isEmbedded, isMobileMedia } from '../common/helpers/detector'
 import Grid from './grid'
 export type CheckedFeatures = Record<string, Feature>
 
@@ -168,7 +169,8 @@ export const PERSISTENT_PANES = new Set(['info', 'explorer', 'settings', 'help']
 export const isPersistentPane = (p?: string) => !!p && PERSISTENT_PANES.has(p)
 
 export const uiAsideTick = signal(0)
-export const sidebarClosed = signal(false)
+// phones and iframe embeds start with the world full-bleed; tap Info to open details
+export const sidebarClosed = signal(isMobileMedia() || isEmbedded())
 export const broadcastShowboxUuid = signal<string | undefined>(undefined)
 // when the local broadcast went live; the closed-sidebar "live" tab reads this for its timer
 export const broadcastLiveStartedAt = signal<number | undefined>(undefined)

@@ -895,6 +895,17 @@ export default class UserInterface extends Component<UserInterfaceProps, UserInt
         <div class={classes}>
           <Snackbar />
 
+          <aside style={{ zIndex: 500 }} class={`ui-toggle-mobile ${this.state.active ? 'hidden' : ''}`}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                this.setState({ active: !this.state.active })
+              }}
+              title={unreadChat ? 'Toggle UI (unread chat)' : 'Toggle UI'}
+            >
+              ☰{unreadChat && <span class="chat-unread-badge" />}
+            </button>
+          </aside>
           <aside data-active={this.state.active}>
             <ul class="ui-sidebar" onMouseLeave={onBlur}>
               {this.state.voiceEnabled && (
