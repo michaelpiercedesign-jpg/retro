@@ -703,7 +703,8 @@ CREATE TABLE public.womps (
     image_url text NOT NULL,
     space_id uuid,
     depth_url text,
-    metadata json
+    metadata json,
+    video_url text
 );
 CREATE SEQUENCE public.womps_id_seq
     START WITH 1

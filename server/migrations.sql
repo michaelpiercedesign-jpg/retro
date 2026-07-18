@@ -269,3 +269,7 @@ SELECT apply_migration('island-board', $$
   CREATE INDEX IF NOT EXISTS island_posts_island_idx ON island_posts (island);
 $$);
 
+SELECT apply_migration('womp-video-url', $$
+  ALTER TABLE womps ADD COLUMN IF NOT EXISTS video_url text;
+$$);
+
