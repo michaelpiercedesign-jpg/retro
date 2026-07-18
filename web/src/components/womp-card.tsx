@@ -13,6 +13,7 @@ export interface Womp {
   created_at: string
   updated_at: string
   image_url: string
+  video_url?: string
 
   // supplied by client
   nearby_count?: number
@@ -47,7 +48,7 @@ export function WompCard(props: CardProps) {
   return (
     <div class="womp">
       <a onClick={onClick} href={`/womps/${props.womp.id}`}>
-        <img loading="lazy" src={props.womp.image_url} alt={props.womp.content} />
+        {props.womp.video_url ? <video src={props.womp.video_url} poster={props.womp.image_url} muted loop autoPlay playsInline /> : <img loading="lazy" src={props.womp.image_url} alt={props.womp.content} />}
         <p title={location}>{location}</p>
       </a>
     </div>

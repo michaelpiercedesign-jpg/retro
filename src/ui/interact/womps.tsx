@@ -57,6 +57,11 @@ export class WompOverlay extends Component<Props, State> {
     TakeWomp.Capture(engine, this.props.scene, this.props.minimapSettings)
   }
 
+  takeReel() {
+    const engine = this.props.scene.getEngine()
+    TakeWomp.CaptureReel(engine, this.props.scene, this.props.minimapSettings)
+  }
+
   onClick = (womp: Womp) => {
     if (window.config.isSpace) {
       //IF we're currently in a space and we click a broadcast womp, take us in-world
@@ -91,9 +96,14 @@ export class WompOverlay extends Component<Props, State> {
         <div style={{ display: 'flex', alignItems: 'center', flex: 1, marginBottom: '10px' }}>
           <span style={{ flex: 1, fontSize: 'smaller' }}>Explore womps captured by other users, click to teleport!</span>
           {this.isLoggedInOnMultiplayerServer && (
-            <button title="Take in world screenshot and share with others" onClick={() => this.takeWomp()} class="TakeWompButton">
-              Capture {'[P]'}
-            </button>
+            <>
+              <button title="Take in world screenshot and share with others" onClick={() => this.takeWomp()} class="TakeWompButton">
+                Capture {'[P]'}
+              </button>
+              <button title="Record a 5 second looping reel" onClick={() => this.takeReel()} class="TakeWompButton">
+                Reel
+              </button>
+            </>
           )}
         </div>
         <div class="grid">

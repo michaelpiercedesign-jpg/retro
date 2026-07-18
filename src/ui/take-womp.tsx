@@ -13,6 +13,8 @@ interface Props {
   coords: string
   parcel: Parcel
   image: string
+  videoUrl?: string
+  videoFile?: File
   scene: BABYLON.Scene
 }
 
@@ -35,6 +37,7 @@ interface State {
 }
 
 const WompSize = { width: 1024, height: 1024 } as const
+const REEL_SECONDS = 5
 
 let wompSound: BABYLON.Sound | null = null
 
@@ -50,6 +53,130 @@ function playWompSound() {
   }
   wompSound.setVolume(0.2)
   wompSound.play()
+}
+
+function pickVideoMime(): string {
+  const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']
+  for (const t of types) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) return t
+  }
+  return 'video/webm'
+}
+
+function videoExt(mime: string) {
+  return mime.includes('mp4') ? 'mp4' : 'webm'
+}
+
+function recordCanvas(canvas: HTMLCanvasElement, seconds: number): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const mimeType = pickVideoMime()
+    let stream: MediaStream
+    try {
+      stream = (canvas as any).captureStream(30)
+    } catch (e) {
+      reject(e)
+      return
+    }
+
+    let recorder: MediaRecorder
+    try {
+      recorder = new MediaRecorder(stream, { mimeType })
+    } catch {
+      try {
+        recorder = new MediaRecorder(stream)
+      } catch (e) {
+        stream.getTracks().forEach((t) => t.stop())
+        reject(e)
+        return
+      }
+    }
+
+    const chunks: BlobPart[] = []
+    recorder.ondataavailable = (e) => {
+      if (e.data?.size) chunks.push(e.data)
+    }
+    recorder.onerror = () => {
+      stream.getTracks().forEach((t) => t.stop())
+      reject(new Error('MediaRecorder failed'))
+    }
+    recorder.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop())
+      const type = recorder.mimeType || mimeType
+      const blob = new Blob(chunks, { type })
+      resolve(new File([blob], `womp_reel_${Date.now()}.${videoExt(type)}`, { type, lastModified: Date.now() }))
+    }
+
+    recorder.start(250)
+    setTimeout(() => {
+      try {
+        if (recorder.state !== 'inactive') recorder.stop()
+      } catch {
+        stream.getTracks().forEach((t) => t.stop())
+        reject(new Error('MediaRecorder stop failed'))
+      }
+    }, seconds * 1000)
+  })
+}
+
+type CaptureCtx = {
+  coords: string
+  parcel: Parcel
+  canvas: HTMLCanvasElement
+  restore: () => void
+}
+
+function beginCapture(engine: BABYLON.Engine, scene: BABYLON.Scene, minimapSettings: MinimapSettings): CaptureCtx | null {
+  if (scene.activeCamera === null) {
+    app.showSnackbar('Failed to capture womp. Could not get camera', PanelType.Danger)
+    return null
+  }
+
+  const coords = window.connector.controls.getCoords()
+  if (!coords) {
+    app.showSnackbar('Failed to capture womp. Could not get coordinates', PanelType.Danger)
+    return null
+  }
+
+  const parcel = window.grid?.getTargetParcel()
+  if (!parcel) {
+    app.showSnackbar('Failed to capture womp. No parcel found', PanelType.Danger)
+    return null
+  }
+
+  const canvas = engine.getRenderingCanvas()
+  if (!canvas) {
+    app.showSnackbar('Failed to capture womp. Could not get canvas', PanelType.Danger)
+    return null
+  }
+
+  minimapSettings.hide = true
+
+  const currentCanvasSizeWidth = canvas.style.width + ''
+  const currentCanvasSizeHeight = canvas.style.height + ''
+
+  canvas.style.width = WompSize.width + 'px'
+  canvas.style.height = WompSize.height + 'px'
+  engine.resize(true)
+
+  return {
+    coords,
+    parcel,
+    canvas,
+    restore: () => {
+      canvas.style.width = currentCanvasSizeWidth
+      canvas.style.height = currentCanvasSizeHeight
+      engine.resize(true)
+      minimapSettings.hide = false
+    },
+  }
+}
+
+function openTakeWomp(coords: string, parcel: Parcel, image: string, scene: BABYLON.Scene, videoUrl?: string, videoFile?: File) {
+  pendingWomp.value = { coords, parcel, image, videoUrl, videoFile }
+  uiPane.value = 'takeWomp'
+  sidebarClosed.value = false
+  uiAsideTick.value++
+  exitPointerLock()
 }
 
 export default class TakeWomp extends Component<Props, State> {
@@ -68,58 +195,49 @@ export default class TakeWomp extends Component<Props, State> {
   }
 
   static async Capture(engine: BABYLON.Engine, scene: BABYLON.Scene, minimapSettings: MinimapSettings) {
-    if (scene.activeCamera === null) {
-      app.showSnackbar('Failed to capture womp. Could not get camera', PanelType.Danger)
-      return
-    }
-
-    const coords = window.connector.controls.getCoords()
-    if (!coords) {
-      app.showSnackbar('Failed to capture womp. Could not get coordinates', PanelType.Danger)
-      return
-    }
-
-    const parcel = window.grid?.getTargetParcel()
-    if (!parcel) {
-      app.showSnackbar('Failed to capture womp. No parcel found', PanelType.Danger)
-      return
-    }
+    const ctx = beginCapture(engine, scene, minimapSettings)
+    if (!ctx) return
 
     playWompSound()
 
-    minimapSettings.hide = true
-
-    const canvas = engine.getRenderingCanvas()
-    if (!canvas) {
-      app.showSnackbar('Failed to capture womp. Could not get canvas', PanelType.Danger)
-      return
-    }
-
-    const currentCanvasSizeWidth = canvas.style.width + ''
-    const currentCanvasSizeHeight = canvas.style.height + ''
-
-    canvas.style.width = WompSize.width + 'px'
-    canvas.style.height = WompSize.height + 'px'
-
-    engine.resize(true)
-
     let image: string
     try {
-      image = await BABYLON.ScreenshotTools.CreateScreenshotAsync(engine, scene.activeCamera, WompSize, 'image/jpeg')
+      image = await BABYLON.ScreenshotTools.CreateScreenshotAsync(engine, scene.activeCamera!, WompSize, 'image/jpeg')
     } finally {
-      canvas.style.width = currentCanvasSizeWidth
-      canvas.style.height = currentCanvasSizeHeight
-      engine.resize(true)
-      minimapSettings.hide = false
+      ctx.restore()
     }
 
     wompFlash(scene)
+    openTakeWomp(ctx.coords, ctx.parcel, image, scene)
+  }
 
-    pendingWomp.value = { coords, parcel, image }
-    uiPane.value = 'takeWomp'
-    sidebarClosed.value = false
-    uiAsideTick.value++
-    exitPointerLock()
+  static async CaptureReel(engine: BABYLON.Engine, scene: BABYLON.Scene, minimapSettings: MinimapSettings) {
+    if (typeof MediaRecorder === 'undefined' || typeof (HTMLCanvasElement.prototype as any).captureStream !== 'function') {
+      app.showSnackbar('Reel capture not supported in this browser', PanelType.Danger)
+      return
+    }
+
+    const ctx = beginCapture(engine, scene, minimapSettings)
+    if (!ctx) return
+
+    playWompSound()
+    app.showSnackbar(`Recording ${REEL_SECONDS}s reel...`)
+
+    let image: string
+    let videoFile: File
+    try {
+      // poster frame first so cards/OG still have a still
+      image = await BABYLON.ScreenshotTools.CreateScreenshotAsync(engine, scene.activeCamera!, WompSize, 'image/jpeg')
+      videoFile = await recordCanvas(ctx.canvas, REEL_SECONDS)
+    } catch {
+      app.showSnackbar('Failed to record reel', PanelType.Danger)
+      return
+    } finally {
+      ctx.restore()
+    }
+
+    wompFlash(scene)
+    openTakeWomp(ctx.coords, ctx.parcel, image, scene, URL.createObjectURL(videoFile), videoFile)
   }
 
   close = () => {
@@ -138,6 +256,17 @@ export default class TakeWomp extends Component<Props, State> {
       return
     }
 
+    let video_url: string | undefined
+    if (this.props.videoFile) {
+      const videoUpload = await uploadMedia(this.props.videoFile, 'womps')
+      if (!videoUpload.success) {
+        this.setState({ uploading: false })
+        app.showSnackbar('Could not upload reel', PanelType.Danger)
+        return
+      }
+      video_url = videoUpload.location
+    }
+
     const body = JSON.stringify({
       kind: this.state.kind,
       content: this.state.content,
@@ -145,6 +274,7 @@ export default class TakeWomp extends Component<Props, State> {
       parcel_id: window.config.isSpace ? null : this.props.parcel.id,
       space_id: this.props.parcel.spaceId,
       image_url: uploadResult.location,
+      ...(video_url && { video_url }),
     })
 
     fetch('/api/womps/create', {
@@ -212,13 +342,15 @@ export default class TakeWomp extends Component<Props, State> {
   }
 
   render() {
+    const isReel = !!this.props.videoUrl
+
     return (
       <section class="take-womp">
         <header>
-          <h2>new womp</h2>
+          <h2>{isReel ? 'new reel' : 'new womp'}</h2>
         </header>
 
-        <img class="take-womp-preview" src={this.props.image} alt="" />
+        {isReel ? <video class="take-womp-preview" src={this.props.videoUrl} poster={this.props.image} muted loop autoPlay playsInline /> : <img class="take-womp-preview" src={this.props.image} alt="" />}
 
         <div class="WompOptions">
           <h4>{this.state.kind === WompType.BugReport ? 'Bug Report Details (required)' : 'Description (optional)'}</h4>
@@ -245,15 +377,17 @@ export default class TakeWomp extends Component<Props, State> {
                 </div>
               </label>
             </div>
-            <div>
-              <label>
-                <input checked={this.state.kind === WompType.BugReport} onClick={() => this.setKind(WompType.BugReport)} name="type" type="radio" />
-                <div>
-                  <strong>Bug Report</strong>
-                  <div class="info">Found an issue? This will only be viewable by Voxels. Please include a description with steps to reproduce and expected behavior.</div>
-                </div>
-              </label>
-            </div>
+            {!isReel && (
+              <div>
+                <label>
+                  <input checked={this.state.kind === WompType.BugReport} onClick={() => this.setKind(WompType.BugReport)} name="type" type="radio" />
+                  <div>
+                    <strong>Bug Report</strong>
+                    <div class="info">Found an issue? This will only be viewable by Voxels. Please include a description with steps to reproduce and expected behavior.</div>
+                  </div>
+                </label>
+              </div>
+            )}
 
             <p>
               <b>Coordinates:</b>

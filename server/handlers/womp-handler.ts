@@ -8,7 +8,7 @@ import { VoxelsUserRequest } from '../user'
 const log = named('womp-handler')
 
 export async function createWomp(req: VoxelsUserRequest, res: Response) {
-  const { content, coords, parcel_id, space_id, kind, image_url } = req.body
+  const { content, coords, parcel_id, space_id, kind, image_url, video_url } = req.body
   const author = req.user?.wallet
 
   if (!Object.values(WompType).includes(kind)) {
@@ -36,6 +36,11 @@ export async function createWomp(req: VoxelsUserRequest, res: Response) {
     return
   }
 
+  if (video_url != null && typeof video_url !== 'string') {
+    res.status(400).send({ success: false, message: 'Video url is invalid' })
+    return
+  }
+
   if (!!space_id && (kind == WompType.Public || kind == WompType.Broadcast)) {
     res.status(400).send({ success: false, message: 'Womps in Spaces cannot be public or broadcasted' })
     return
@@ -48,6 +53,7 @@ export async function createWomp(req: VoxelsUserRequest, res: Response) {
     parcel_id,
     space_id,
     image_url,
+    video_url: typeof video_url === 'string' ? video_url : undefined,
     kind,
   })
 

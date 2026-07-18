@@ -95,9 +95,10 @@ export default class Womp extends Component<Props, State> {
   }
 
   renderAside(img: string) {
+    const video = this.state.womp.video_url as string | undefined
     const onZoom = () => {
-      const el = document.querySelector('img.womp') as HTMLImageElement
-      if (el) el.requestFullscreen()
+      const el = (document.querySelector('video.womp') || document.querySelector('img.womp')) as HTMLElement | null
+      if (el?.requestFullscreen) el.requestFullscreen()
     }
 
     return (
@@ -117,7 +118,7 @@ export default class Womp extends Component<Props, State> {
           <dd>{new Date(this.state.womp.created_at).toLocaleString()}</dd>
         </dl>
 
-        <img src={img} class="womp" onClick={onZoom} />
+        {video ? <video src={video} poster={img} class="womp" muted loop autoPlay playsInline controls onClick={onZoom} /> : <img src={img} class="womp" onClick={onZoom} />}
 
         {this.state.womp.content && <p>{this.state.womp.content}</p>}
 

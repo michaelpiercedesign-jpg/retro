@@ -845,7 +845,7 @@ export default class UserInterface extends Component<UserInterfaceProps, UserInt
       case 'takeWomp': {
         const w = pendingWomp.value
         if (!w) return null
-        return <TakeWomp coords={w.coords} parcel={w.parcel} image={w.image} scene={this.props.scene} onClose={closeTakeWomp} />
+        return <TakeWomp coords={w.coords} parcel={w.parcel} image={w.image} videoUrl={w.videoUrl} videoFile={w.videoFile} scene={this.props.scene} onClose={closeTakeWomp} />
       }
       case 'help':
         return <HelpOverlay scene={this.props.scene} onShowScratchpadGuide={isScratchpad() ? this.openScratchpadGuide : undefined} />

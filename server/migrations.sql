@@ -284,3 +284,7 @@ SELECT apply_migration('island-board-slots', $$
     PRIMARY KEY (post_id, wallet)
   );
 $$);
+
+SELECT apply_migration('womp-video-url', $$
+  ALTER TABLE womps ADD COLUMN IF NOT EXISTS video_url text;
+$$);

@@ -223,11 +223,19 @@ export type PendingWomp = {
   coords: string
   parcel: Parcel
   image: string
+  videoUrl?: string
+  videoFile?: File
 }
 
 export const pendingWomp = signal<PendingWomp | null>(null)
 
 export const closeTakeWomp = () => {
+  const w = pendingWomp.value
+  if (w?.videoUrl) {
+    try {
+      URL.revokeObjectURL(w.videoUrl)
+    } catch {}
+  }
   pendingWomp.value = null
   if (uiPane.value === 'takeWomp') uiPane.value = undefined
   uiAsideTick.value++
